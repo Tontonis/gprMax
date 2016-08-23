@@ -24,10 +24,11 @@ from enum import Enum
 import itertools
 import os
 import psutil
-from shutil import get_terminal_size
 import sys
 from time import perf_counter
 
+from colorama import init, Fore, Style
+init()
 import numpy as np
 from terminaltables import AsciiTable
 from tqdm import tqdm
@@ -42,9 +43,9 @@ from .input_cmds_file import process_python_include_code, write_processed_file, 
 from .input_cmds_multiuse import process_multicmds
 from .input_cmds_singleuse import process_singlecmds
 from .materials import Material, process_materials
-from .pml import build_pmls, update_electric_pml, update_magnetic_pml
+from .pml import build_pmls
 from .receivers import store_outputs
-from .utilities import logo, human_size
+from .utilities import logo, human_size, get_machine_cpu_os, get_terminal_width
 from .writer_hdf5 import write_hdf5
 from .yee_cell_build import build_electric_components, build_magnetic_components
 
@@ -56,13 +57,13 @@ def main():
     logo(__version__ + ' (Bowmore)')
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(prog='gprMax', description='Electromagnetic modelling software based on the Finite-Difference Time-Domain (FDTD) method')
-    parser.add_argument('inputfile', help='path to and name of inputfile')
-    parser.add_argument('-n', default=1, type=int, help='number of times to run the input file')
+    parser = argparse.ArgumentParser(prog='gprMax')
+    parser.add_argument('inputfile', help='path to, and name of inputfile')
+    parser.add_argument('-n', default=1, type=int, help='number of times to run the input file, e.g. for creating B-scans')
     parser.add_argument('-mpi', action='store_true', default=False, help='flag to switch on MPI task farm')
     parser.add_argument('-benchmark', action='store_true', default=False, help='flag to switch on benchmarking mode')
     parser.add_argument('--geometry-only', action='store_true', default=False, help='flag to only build model and produce geometry file(s)')
-    parser.add_argument('--geometry-fixed', action='store_true', default=False, help='flag to not reprocess model geometry for multiple model runs')
+    parser.add_argument('--geometry-fixed', action='store_true', default=False, help='flag to not reprocess model geometry, e.g. for B-scans where the geometry is fixed')
     parser.add_argument('--write-processed', action='store_true', default=False, help='flag to write an input file after any Python code and include commands in the original input file have been processed')
     parser.add_argument('--opt-taguchi', action='store_true', default=False, help='flag to optimise parameters using the Taguchi optimisation method')
     args = parser.parse_args()
@@ -151,8 +152,8 @@ def run_std_sim(args, numbermodelruns, inputfile, usernamespace, optparams=None)
             modelusernamespace = usernamespace
         run_model(args, modelrun, numbermodelruns, inputfile, modelusernamespace)
     tsimend = perf_counter()
-    print('\n{}\nSimulation completed in [HH:MM:SS]: {}'.format('-' * get_terminal_size()[0], datetime.timedelta(seconds=int(tsimend - tsimstart))))
-    print('{}\n'.format('=' * get_terminal_size()[0]))
+    simcompletestr = '\n=== Simulation completed in [HH:MM:SS]: {}'.format(datetime.timedelta(seconds=int(tsimend - tsimstart)))
+    print('{} {}\n'.format(simcompletestr, '=' * (get_terminal_width() - 1 - len(simcompletestr))))
 
 
 def run_benchmark_sim(args, inputfile, usernamespace):
@@ -182,9 +183,12 @@ def run_benchmark_sim(args, inputfile, usernamespace):
 
     # Save number of threads and benchmarking times to NumPy archive
     threads = np.array(threads)
-    np.savez(os.path.splitext(inputfile)[0], threads=threads, benchtimes=benchtimes, version=__version__)
+    machineID, cpuID, osversion = get_machine_cpu_os()
+    machineIDlong = machineID + '; ' + cpuID + '; ' + osversion
+    np.savez(os.path.splitext(inputfile)[0], threads=threads, benchtimes=benchtimes, machineID=machineIDlong, version=__version__)
 
-    print('\nSimulation completed\n{}\n'.format('=' * get_terminal_size()[0]))
+    simcompletestr = '\n=== Simulation completed'
+    print('{} {}\n'.format(simcompletestr, '=' * (get_terminal_width() - 1 - len(simcompletestr))))
 
 
 def run_mpi_sim(args, numbermodelruns, inputfile, usernamespace, optparams=None):
@@ -263,8 +267,8 @@ def run_mpi_sim(args, numbermodelruns, inputfile, usernamespace, optparams=None)
         comm.send(None, dest=0, tag=tags.EXIT.value)
 
     tsimend = perf_counter()
-    print('\n{}\nSimulation completed in [HH:MM:SS]: {}'.format('-' * get_terminal_size()[0], datetime.timedelta(seconds=int(tsimend - tsimstart))))
-    print('{}\n'.format('=' * get_terminal_size()[0]))
+    simcompletestr = '\n=== Simulation completed in [HH:MM:SS]: {}'.format(datetime.timedelta(seconds=int(tsimend - tsimstart)))
+    print('{} {}\n'.format(simcompletestr, '=' * (get_terminal_width() - 1 - len(simcompletestr))))
 
 
 def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
@@ -289,7 +293,8 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
 
     # Normal model reading/building process; bypassed if geometry information to be reused
     if 'G' not in globals():
-        print('{}\n\nInput file: {}\n'.format('-' * get_terminal_size()[0], inputfile))
+        inputfilestr = '\n--- Model {} of {}, input file: {}'.format(modelrun, numbermodelruns, inputfile)
+        print(Fore.GREEN + '{} {}\n'.format(inputfilestr, '-' * (get_terminal_width() - 1 - len(inputfilestr))) + Style.RESET_ALL)
 
         # Add the current model run to namespace that can be accessed by user in any Python code blocks in input file
         usernamespace['current_model_run'] = modelrun
@@ -313,9 +318,11 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
         # Create built-in materials
         m = Material(0, 'pec')
         m.se = float('inf')
+        m.type = 'builtin'
         m.average = False
         G.materials.append(m)
         m = Material(1, 'free_space')
+        m.type = 'builtin'
         G.materials.append(m)
 
         # Process parameters for commands that can only occur once in the model
@@ -340,7 +347,7 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
 
         # Build the model, i.e. set the material properties (ID) for every edge of every Yee cell
         print()
-        pbar = tqdm(total=2, desc='Building FDTD grid')
+        pbar = tqdm(total=2, desc='Building FDTD grid', ncols=get_terminal_width() - 1, file=sys.stdout, disable=G.tqdmdisable)
         build_electric_components(G.solid, G.rigidE, G.ID, G)
         pbar.update()
         build_magnetic_components(G.solid, G.rigidH, G.ID, G)
@@ -369,11 +376,12 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
         # Check to see if numerical dispersion might be a problem
         resolution = dispersion_check(G)
         if resolution and max((G.dx, G.dy, G.dz)) > resolution:
-            print('\nWARNING: Potential numerical dispersion in the simulation. Check the spatial discretisation against the smallest wavelength present. Suggested resolution should be less than {:g}m'.format(resolution))
+            print(Fore.RED + '\nWARNING: Potential numerical dispersion in the simulation. Check the spatial discretisation against the smallest wavelength present. Suggested resolution should be less than {:g}m'.format(resolution) + Style.RESET_ALL)
 
     # If geometry information to be reused between model runs
     else:
-        print('{}\nInput not re-processed.'.format('-' * get_terminal_size()[0]))
+        inputfilestr = '\nInput file not re-processed'
+        print(Fore.GREEN + '{} {}\n'.format(inputfilestr, '-' * (get_terminal_width() - 1 - len(inputfilestr))))
 
         # Clear arrays for field components
         G.initialise_field_arrays()
@@ -405,8 +413,12 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
         raise GeneralError('No geometry views found.')
     elif G.geometryviews:
         print()
-        for geometryview in tqdm(G.geometryviews, desc='Writing geometry file(s)'):
-            geometryview.write_vtk(modelrun, numbermodelruns, G)
+        for i, geometryview in enumerate(G.geometryviews):
+            geometryview.set_filename(modelrun, numbermodelruns, G)
+            geoiters = 6 * (((geometryview.xf - geometryview.xs) / geometryview.dx) * ((geometryview.yf - geometryview.ys) / geometryview.dy) * ((geometryview.zf - geometryview.zs) / geometryview.dz))
+            pbar = tqdm(total=geoiters, unit='byte', unit_scale=True, desc='Writing geometry file {} of {}, {}'.format(i + 1, len(G.geometryviews), os.path.split(geometryview.filename)[1]), ncols=get_terminal_width() - 1, file=sys.stdout, disable=G.tqdmdisable)
+            geometryview.write_vtk(modelrun, numbermodelruns, G, pbar)
+            pbar.close()
             # geometryview.write_xdmf(modelrun, numbermodelruns, G)
 
     # Run simulation (if not doing geometry only)
@@ -432,7 +444,7 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
         # Absolute time
         abstime = 0
 
-        for timestep in tqdm(range(G.iterations), desc='Running simulation, model ' + str(modelrun) + ' of ' + str(numbermodelruns)):
+        for timestep in tqdm(range(G.iterations), desc='Running simulation, model ' + str(modelrun) + ' of ' + str(numbermodelruns), ncols=get_terminal_width() - 1, file=sys.stdout, disable=G.tqdmdisable):
 
             G.timestep = timestep
 
@@ -440,9 +452,12 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
             store_outputs(G)
 
             # Write any snapshots to file
-            for snapshot in G.snapshots:
-                if snapshot.time == timestep + 1:
-                    snapshot.write_vtk_imagedata(G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz, G)
+            for i, snap in enumerate(G.snapshots):
+                if snap.time == timestep + 1:
+                    snapiters = 36 * (((snap.xf - snap.xs) / snap.dx) * ((snap.yf - snap.ys) / snap.dy) * ((snap.zf - snap.zs) / snap.dz))
+                    pbar = tqdm(total=snapiters, leave=False, unit='byte', unit_scale=True, desc='  Writing snapshot file {} of {}, {}'.format(i + 1, len(G.snapshots), os.path.split(snap.filename)[1]), ncols=get_terminal_width() - 1, file=sys.stdout, disable=G.tqdmdisable)
+                    snap.write_vtk_imagedata(G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz, G, pbar)
+                    pbar.close()
 
             # Update electric field components
             if Material.maxpoles == 0:  # All materials are non-dispersive so do standard update
@@ -453,7 +468,8 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
                 update_electric_dispersive_multipole_A(G.nx, G.ny, G.nz, G.nthreads, Material.maxpoles, G.updatecoeffsE, G.updatecoeffsdispersive, G.ID, G.Tx, G.Ty, G.Tz, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz)
 
             # Update electric field components with the PML correction
-            update_electric_pml(G)
+            for pml in G.pmls:
+                pml.update_electric(G)
 
             # Update electric field components from sources (update any Hertzian dipole sources last)
             for source in G.voltagesources + G.transmissionlines + G.hertziandipoles:
@@ -472,7 +488,8 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
             update_magnetic(G.nx, G.ny, G.nz, G.nthreads, G.updatecoeffsH, G.ID, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz)
 
             # Update magnetic field components with the PML correction
-            update_magnetic_pml(G)
+            for pml in G.pmls:
+                pml.update_magnetic(G)
 
             # Update magnetic field components from sources
             for source in G.transmissionlines + G.magneticdipoles:
@@ -488,7 +505,7 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
         write_hdf5(outputfile, G)
 
         if G.messages:
-            print('\nMemory (RAM) used: ~{}'.format(human_size(p.memory_info().rss)))
+            print('Memory (RAM) used: ~{}'.format(human_size(p.memory_info().rss)))
 
         ##################################
         #  End - Main FDTD calculations  #

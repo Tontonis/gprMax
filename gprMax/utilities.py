@@ -27,6 +27,21 @@ import textwrap
 from colorama import init, Fore, Style, Back
 init()
 
+
+def get_terminal_width():
+    """Get/set width of terminal being used.
+
+    Returns:
+        terminalwidth (int): Terminal width
+    """
+
+    terminalwidth = get_terminal_size()[0]
+    if terminalwidth == 0:
+        terminalwidth = 100
+
+    return(terminalwidth)
+
+
 def logo(version):
     """Print gprMax logo, version, and licencing/copyright information.
 
@@ -34,12 +49,13 @@ def logo(version):
         version (str): Version number.
     """
 
-    description = '"Electromagnetic modelling software based on the Finite-Difference Time-Domain (FDTD) method"'
+
+    description = '\n=== Electromagnetic modelling software based on the Finite-Difference Time-Domain (FDTD) method'
     copyright = 'Copyright (C) 2015-2016: The University of Edinburgh'
     authors = 'Authors: Craig Warren and Antonis Giannopoulos'
     licenseinfo1 = 'gprMax is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.\n'
     licenseinfo2 = 'gprMax is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.'
-    licenseinfo3 = 'You should have received a copy of the GNU General Public License along with gprMax.  If not, see <http://www.gnu.org/licenses/>.'
+    licenseinfo3 = 'You should have received a copy of the GNU General Public License along with gprMax.  If not, see www.gnu.org/licenses.'
 
     logo = """    www.gprmax.com   __  __
      __ _ _ __  _ __|  \/  | __ ___  __
@@ -49,19 +65,15 @@ def logo(version):
     |___/|_|
                        v""" + version
 
-    print('\n{}'.format('=' * get_terminal_size()[0]))
 
-
-    print(Fore.MAGENTA + '{}'.format(logo))
-    print(Style.RESET_ALL + '{}'.format('-' * get_terminal_size()[0]))
-    print(textwrap.fill(description, width=get_terminal_size()[0], initial_indent=' '))
+    print('{} {}\n'.format(description, '=' * (get_terminal_width() - len(description) - 1)))
+    print(Fore.CYAN + '{}\n'.format(logo))
+    print(Style.RESET_ALL + textwrap.fill(copyright, width=get_terminal_width() - 1, initial_indent=' '))
+    print(textwrap.fill(authors, width=get_terminal_width() - 1, initial_indent=' '))
     print()
-    print(textwrap.fill(copyright, width=get_terminal_size()[0], initial_indent=' '))
-    print(textwrap.fill(authors, width=get_terminal_size()[0], initial_indent=' '))
-    print()
-    print(textwrap.fill(licenseinfo1, width=get_terminal_size()[0], initial_indent=' ', subsequent_indent='  '))
-    print(textwrap.fill(licenseinfo2, width=get_terminal_size()[0], initial_indent=' ', subsequent_indent='  '))
-    print(textwrap.fill(licenseinfo3, width=get_terminal_size()[0], initial_indent=' ', subsequent_indent='  '))
+    print(textwrap.fill(licenseinfo1, width=get_terminal_width() - 1, initial_indent=' ', subsequent_indent='  '))
+    print(textwrap.fill(licenseinfo2, width=get_terminal_width() - 1, initial_indent=' ', subsequent_indent='  '))
+    print(textwrap.fill(licenseinfo3, width=get_terminal_width() - 1, initial_indent=' ', subsequent_indent='  '))
 
 
 def round_value(value, decimalplaces=0):
@@ -87,7 +99,7 @@ def round_value(value, decimalplaces=0):
     return rounded
 
 
-def human_size(size, a_kilobyte_is_1024_bytes=True):
+def human_size(size, a_kilobyte_is_1024_bytes=False):
     """Convert a file size to human-readable form.
 
     Args:
@@ -107,7 +119,7 @@ def human_size(size, a_kilobyte_is_1024_bytes=True):
     for suffix in suffixes[multiple]:
         size /= multiple
         if size < multiple:
-            return '{0:.1f}{1}'.format(size, suffix)
+            return '{:.0f}{}'.format(size, suffix)
 
     raise ValueError('Number is too large.')
 
@@ -153,11 +165,7 @@ def get_machine_cpu_os():
         allcpuinfo = subprocess.check_output("cat /proc/cpuinfo", shell=True).decode('utf-8').strip()
         for line in allcpuinfo.split('\n'):
             if 'model name' in line:
-                cpuID = re.sub( '.*model name.*:', '', line, 1)
+                cpuID = re.sub('.*model name.*:', '', line, 1)
         osversion = 'Linux (' + platform.release() + ')'
 
     return machineID, cpuID, osversion
-
-
-
-

@@ -17,6 +17,7 @@
 # along with gprMax.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import sys
 
 import h5py
 import numpy as np
@@ -29,7 +30,7 @@ from gprMax.exceptions import CmdInputError
 from gprMax.fractals import FractalSurface, FractalVolume, Grass
 from gprMax.geometry_primitives import build_edge_x, build_edge_y, build_edge_z, build_face_yz, build_face_xz, build_face_xy, build_triangle, build_box, build_cylinder, build_cylindrical_sector, build_sphere, build_voxels_from_array, build_voxels_from_array_mask
 from gprMax.materials import Material
-from gprMax.utilities import round_value
+from gprMax.utilities import round_value, get_terminal_width
 
 
 def process_geometrycmds(geometry, G):
@@ -40,8 +41,13 @@ def process_geometrycmds(geometry, G):
 
     """
 
+    # Disable progress bar if on Windows as it does not update properly when messages are printed
+    if sys.platform == 'win32':
+        tqdmdisable = True
+    else:
+        tqdmdisable = G.tqdmdisable
 
-    for object in tqdm(geometry, desc='Processing geometry objects'):
+    for object in tqdm(geometry, desc='Processing geometry related cmds', unit='cmds', ncols=get_terminal_width() - 1, file=sys.stdout, disable=tqdmdisable):
         tmp = object.split()
 
         if tmp[0] == '#geometry_objects_file:':
@@ -90,7 +96,7 @@ def process_geometrycmds(geometry, G):
             build_voxels_from_array(xs, ys, zs, numexistmaterials, data, G.solid, G.rigidE, G.rigidH, G.ID)
 
             if G.messages:
-                tqdm.write('Geometry objects from file {} inserted at {:g}m, {:g}m, {:g}m, with corresponding materials file {}.'.format(geofile, xs * G.dx, ys * G.dy, zs * G.dz, matfile))
+                tqdm.write('Geometry objects from file {} inserted at {:g}m, {:g}m, {:g}m, with corresponding materials file {}, dielectric smoothing is off for these objects.'.format(geofile, xs * G.dx, ys * G.dy, zs * G.dz, matfile))
 
         elif tmp[0] == '#edge:':
             if len(tmp) != 8:
@@ -344,7 +350,8 @@ def process_geometrycmds(geometry, G):
                     else:
                         numID = len(G.materials)
                         m = Material(numID, requiredID)
-                        # Create averaged constituents for material
+                        m.type = 'dielectric-smoothed'
+                        # Create dielectric-smoothed constituents for material
                         m.er = np.mean((materials[0].er, materials[1].er, materials[2].er), axis=0)
                         m.se = np.mean((materials[0].se, materials[1].se, materials[2].se), axis=0)
                         m.mr = np.mean((materials[0].mr, materials[1].mr, materials[2].mr), axis=0)
@@ -451,7 +458,8 @@ def process_geometrycmds(geometry, G):
                 else:
                     numID = len(G.materials)
                     m = Material(numID, requiredID)
-                    # Create averaged constituents for material
+                    m.type = 'dielectric-smoothed'
+                    # Create dielectric-smoothed constituents for material
                     m.er = np.mean((materials[0].er, materials[1].er, materials[2].er), axis=0)
                     m.se = np.mean((materials[0].se, materials[1].se, materials[2].se), axis=0)
                     m.mr = np.mean((materials[0].mr, materials[1].mr, materials[2].mr), axis=0)
@@ -531,7 +539,8 @@ def process_geometrycmds(geometry, G):
                 else:
                     numID = len(G.materials)
                     m = Material(numID, requiredID)
-                    # Create averaged constituents for material
+                    m.type = 'dielectric-smoothed'
+                    # Create dielectric-smoothed constituents for material
                     m.er = np.mean((materials[0].er, materials[1].er, materials[2].er), axis=0)
                     m.se = np.mean((materials[0].se, materials[1].se, materials[2].se), axis=0)
                     m.mr = np.mean((materials[0].mr, materials[1].mr, materials[2].mr), axis=0)
@@ -620,7 +629,8 @@ def process_geometrycmds(geometry, G):
                     else:
                         numID = len(G.materials)
                         m = Material(numID, requiredID)
-                        # Create averaged constituents for material
+                        m.type = 'dielectric-smoothed'
+                        # Create dielectric-smoothed constituents for material
                         m.er = np.mean((materials[0].er, materials[1].er, materials[2].er), axis=0)
                         m.se = np.mean((materials[0].se, materials[1].se, materials[2].se), axis=0)
                         m.mr = np.mean((materials[0].mr, materials[1].mr, materials[2].mr), axis=0)
@@ -729,7 +739,8 @@ def process_geometrycmds(geometry, G):
                 else:
                     numID = len(G.materials)
                     m = Material(numID, requiredID)
-                    # Create averaged constituents for material
+                    m.type = 'dielectric-smoothed'
+                    # Create dielectric-smoothed constituents for material
                     m.er = np.mean((materials[0].er, materials[1].er, materials[2].er), axis=0)
                     m.se = np.mean((materials[0].se, materials[1].se, materials[2].se), axis=0)
                     m.mr = np.mean((materials[0].mr, materials[1].mr, materials[2].mr), axis=0)
@@ -1022,6 +1033,7 @@ def process_geometrycmds(geometry, G):
                         if not any(x.ID == 'water' for x in G.materials):
                             m = Material(len(G.materials), 'water')
                             m.average = False
+                            m.type = 'builtin, debye'
                             m.er = Material.watereri
                             m.deltaer.append(Material.waterdeltaer)
                             m.tau.append(Material.watertau)
@@ -1169,6 +1181,7 @@ def process_geometrycmds(geometry, G):
                         if not any(x.ID == 'grass' for x in G.materials):
                             m = Material(len(G.materials), 'grass')
                             m.average = False
+                            m.type = 'builtin, debye'
                             m.er = Material.grasseri
                             m.deltaer.append(Material.grassdeltaer)
                             m.tau.append(Material.grasstau)

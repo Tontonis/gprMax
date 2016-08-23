@@ -611,6 +611,7 @@ Allows you to insert pre-defined geometry into a model. The geometry is specifie
     * The integer numbers in the HDF5 file must be stored as a NumPy array at the root named ``data`` with type ``np.int16``.
     * The integer numbers in the HDF5 file correspond to the order of material commands in the materials text file, i.e. if ``#sand: 3 0 1 0`` is the first material in the materials file, it will be associated with any integers that are zero in the HDF5 file.
     * You can use an integer of -1 in the HDF5 file to indicate not to build any material at that location, i.e. whatever material is already in the model at that location.
+    * Dielectric smoothing will not occur for materials imported from a materials text file.
     * The spatial resolution of the geometry objects must match the spatial resolution defined in the model.
     * The spatial resolution of must be specified as a root attribute of the HDF5 file with the name ``dx, dy, dz`` equal to a tuple of floats, e.g. (0.002, 0.002, 0.002)
 
@@ -639,7 +640,7 @@ Allows you to specify waveforms to use with sources in the model. The syntax of 
     * ``ricker`` which is a Ricker (or Mexican hat) waveform, i.e. the negative, normalised second derivative of a Gaussian waveform.
     * ``sine`` which is a single cycle of a sine waveform.
     * ``contsine`` which is a continuous sine waveform. In order to avoid introducing noise into the calculation the amplitude of the waveform is modulated for the first cycle of the sine wave (ramp excitation).
-* ``f1`` is the amplitude of the waveform (for a ``#hertzian_dipole`` the units will be Amps, for a ``#voltage_source`` or ``#transmission_line`` the units will be Volts).
+* ``f1`` is the scaling of the maximum amplitude of the waveform (for a ``#hertzian_dipole`` the units will be Amps, for a ``#voltage_source`` or ``#transmission_line`` the units will be Volts).
 * ``f2`` is the frequency of the waveform (Hertz).
 * ``str2`` is an identifier for the waveform used to assign it to a source.
 

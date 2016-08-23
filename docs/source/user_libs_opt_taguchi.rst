@@ -11,14 +11,7 @@ Information
 
 **License**: Creative Commons Attribution-ShareAlike 4.0 International License (http://creativecommons.org/licenses/by-sa/4.0/)
 
-.. code-block:: python
-
-    # Copyright (C) 2015-2016, Craig Warren
-    #
-    # This module is licensed under the Creative Commons Attribution-ShareAlike 4.0 International License.
-    # To view a copy of this license, visit http://creativecommons.org/licenses/by-sa/4.0/.
-    #
-    # Please use the attribution at http://dx.doi.org/10.1190/1.3548506
+**Attribution/cite**: Warren, C., Giannopoulos, A. (2011). Creating finite-difference time-domain models of commercial ground-penetrating radar antennas using Taguchi's optimization method. *Geophysics*, 76(2), G37-G47. (http://dx.doi.org/10.1190/1.3548506)
 
 The package features an optimisation technique based on Taguchi's method. It allows users to define parameters in an input file and optimise their values based on a fitness function, for example it can be used to optimise material properties or geometry in a simulation.
 
@@ -114,7 +107,7 @@ The bowtie design features three vertical slots (y-direction) in each arm of the
     :language: none
     :linenos:
 
-The first part of the input file (lines 1-7) contains the parameters to optimise, their initial ranges, and fitness function information for the optimisation process. Three parameters representing the resistor values are defined with ranges between 0.1 :math:`\Omega` and 1 :math:`k\Omega`. A pre-built fitness function called ``maxabsvalue`` is specified with a stopping criterion of 10V/m. The output point in the model that will be used in the optimisation is specified as having the name ``Ex60mm``.
+The first part of the input file (lines 1-7) contains the parameters to optimise, their initial ranges, and fitness function information for the optimisation process. Three parameters representing the resistor values are defined with ranges between 0.1 :math:`\Omega` and 1 :math:`k\Omega`. A pre-built fitness function called ``min_max_value`` is specified with a stopping criterion of 10V/m. Arguments for the ``min_max_value`` function are ``type`` given as ``absmax``, i.e. the maximum absolute values, and the output point in the model that will be used in the optimisation is specified as having the name ``Ex60mm``.
 
 The next part of the input file (lines 9-93) contains the model. For the most part there is nothing special about the way the model is defined - a mixture of Python, NumPy and functional forms of the input commands (available by importing the module ``input_cmd_funcs``) are used. However, it is worth pointing out how the values of the parameters to optimise are accessed. On line 29 a NumPy array of the values of the resistors is created. The values are accessed using their names as keys to the ``optparams`` dictionary. On line 30 the values of the resistors are converted to conductivities, which are used to create new materials (line 34-35). The resistors are then built by applying the materials to cell edges (e.g. lines 55-62). The output point in the model in specifed with the name ``Ex60mm`` and as having only an ``Ex`` field output (line 42).
 

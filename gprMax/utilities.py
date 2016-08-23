@@ -24,7 +24,7 @@ from shutil import get_terminal_size
 import sys
 import textwrap
 
-from colorama import init, Fore, Style
+from colorama import init, Fore, Style, Back
 init()
 
 def logo(version):
@@ -33,7 +33,7 @@ def logo(version):
     Args:
         version (str): Version number.
     """
-    
+
     description = '"Electromagnetic modelling software based on the Finite-Difference Time-Domain (FDTD) method"'
     copyright = 'Copyright (C) 2015-2016: The University of Edinburgh'
     authors = 'Authors: Craig Warren and Antonis Giannopoulos'
@@ -46,12 +46,12 @@ def logo(version):
     / _` | '_ \| '__| |\/| |/ _` \ \/ /
    | (_| | |_) | |  | |  | | (_| |>  <
     \__, | .__/|_|  |_|  |_|\__,_/_/\_\\
-    |___/|_|                
+    |___/|_|
                        v""" + version
 
     print('\n{}'.format('=' * get_terminal_size()[0]))
-    
-    
+
+
     print(Fore.MAGENTA + '{}'.format(logo))
     print(Style.RESET_ALL + '{}'.format('-' * get_terminal_size()[0]))
     print(textwrap.fill(description, width=get_terminal_size()[0], initial_indent=' '))

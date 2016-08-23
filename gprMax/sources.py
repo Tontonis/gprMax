@@ -23,6 +23,7 @@ import numpy as np
 from gprMax.constants import c, floattype
 from gprMax.grid import Ix, Iy, Iz
 from gprMax.utilities import round_value
+from .conf import store_total_I_line, store_total_V_line
 
 
 class Source(object):
@@ -206,6 +207,12 @@ class TransmissionLine(Source):
         super(Source, self).__init__()
         self.resistance = None
 
+        self.waveform = None
+
+        # Polarisation is the direction of the displacement current we
+        # intend to induce.
+        self.polarisation = None
+
         # Coefficients for ABC termination of end of the transmission line
         self.abcv0 = 0
         self.abcv1 = 0
@@ -225,9 +232,17 @@ class TransmissionLine(Source):
         self.voltage = np.zeros(self.nl, dtype=floattype)
         self.current = np.zeros(self.nl, dtype=floattype)
         self.Vinc = np.zeros(G.iterations, dtype=floattype)
+        self.Vpulse = np.zeros(G.iterations, dtype=floattype)
+        self.Ipulse = np.zeros(G.iterations, dtype=floattype)
         self.Iinc = np.zeros(G.iterations, dtype=floattype)
         self.Vtotal = np.zeros(G.iterations, dtype=floattype)
         self.Itotal = np.zeros(G.iterations, dtype=floattype)
+        self.Ez = np.zeros(G.iterations, dtype=floattype)
+
+        if store_total_I_line:
+            self.I = np.zeros((G.iterations, self.nl), dtype=floattype)
+        if store_total_V_line:
+            self.V = np.zeros((G.iterations, self.nl), dtype=floattype)
 
     def calculate_incident_V_I(self, G):
         """Calculates the incident voltage and current with a long length transmission line not connected to the main grid from: http://dx.doi.org/10.1002/mop.10415
@@ -235,11 +250,12 @@ class TransmissionLine(Source):
         Args:
             G (class): Grid class instance - holds essential parameters describing the model.
         """
-
         abstime = 0
         for timestep in range(G.iterations):
             self.Vinc[timestep] = self.voltage[self.antpos]
             self.Iinc[timestep] = self.current[self.antpos]
+            self.Vpulse[timestep] = self.voltage[self.srcpos]
+            self.Ipulse[timestep] = self.current[self.srcpos - 1]
             self.update_voltage(abstime, G)
             abstime += 0.5 * G.dt
             self.update_current(abstime, G)
@@ -273,8 +289,8 @@ class TransmissionLine(Source):
         self.voltage[1:self.nl] -= self.resistance * (c * G.dt / self.dl) * (self.current[1:self.nl] - self.current[0:self.nl - 1])
 
         # Update the voltage at the position of the one-way injector excitation
-        waveform = next(x for x in G.waveforms if x.ID == self.waveformID)
-        self.voltage[self.srcpos] += (c * G.dt / self.dl) * waveform.amp * waveform.calculate_value(time - 0.5 * G.dt, G.dt)
+        v = (c * G.dt / self.dl) * self.waveform.amp * self.waveform.calculate_value(time - 0.5 * G.dt, G.dt)
+        self.voltage[self.srcpos] += v
 
         # Update ABC before updating current
         self.update_abc(G)
@@ -291,8 +307,7 @@ class TransmissionLine(Source):
         self.current[0:self.nl - 1] -= (1 / self.resistance) * (c * G.dt / self.dl) * (self.voltage[1:self.nl] - self.voltage[0:self.nl - 1])
 
         # Update the current one node before the position of the one-way injector excitation
-        waveform = next(x for x in G.waveforms if x.ID == self.waveformID)
-        self.current[self.srcpos - 1] += (c * G.dt / self.dl) * waveform.amp * waveform.calculate_value(time - 0.5 * G.dt, G.dt) * (1 / self.resistance)
+        self.current[self.srcpos - 1] += (c * G.dt / self.dl) * self.waveform.amp * self.waveform.calculate_value(time - 0.5 * G.dt, G.dt) * (1 / self.resistance)
 
     def update_electric(self, abstime, updatecoeffsE, ID, Ex, Ey, Ez, G):
         """Updates electric field value in the main grid from voltage value in the transmission line.
@@ -323,6 +338,9 @@ class TransmissionLine(Source):
             elif self.polarisation is 'z':
                 Ez[i, j, k] = - self.voltage[self.antpos] / G.dz
 
+            elif self.polarisation == '-z':
+                Ez[i, j, k] = self.voltage[self.antpos] / G.dz
+
     def update_magnetic(self, abstime, updatecoeffsH, ID, Hx, Hy, Hz, G):
         """Updates current value in transmission line from magnetic field values in the main grid.
 
@@ -348,6 +366,10 @@ class TransmissionLine(Source):
                 self.current[self.antpos] = Iy(i, j, k, G.Hx, G.Hz, G)
 
             elif self.polarisation is 'z':
+                #self.current[self.antpos] = (Iz(i, j, k, G.Hx, G.Hy, G) + Iz(i, j, k + 1, G.Hx, G.Hy, G)) / 2
+                self.current[self.antpos] = Iz(i, j, k, G.Hx, G.Hy, G)
+
+            elif self.polarisation is '-z':
                 self.current[self.antpos] = Iz(i, j, k, G.Hx, G.Hy, G)
 
             self.update_current(time, G)

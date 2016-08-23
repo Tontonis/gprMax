@@ -61,10 +61,10 @@ def process_multicmds(multicmds, G):
                 raise CmdInputError("'" + cmdname + ': ' + ' '.join(tmp) + "'" + ' with ID {} already exists'.format(tmp[3]))
 
             w = Waveform()
-            w.ID = tmp[3]
             w.type = tmp[0].lower()
             w.amp = float(tmp[1])
             w.freq = float(tmp[2])
+            w.ID = tmp[3]
 
             if G.messages:
                 print('Waveform {} of type {} with amplitude {:g}, frequency {:g}Hz created.'.format(w.ID, w.type, w.amp, w.freq))
@@ -258,8 +258,8 @@ def process_multicmds(multicmds, G):
                 raise CmdInputError("'" + cmdname + ': ' + ' '.join(tmp) + "'" + ' requires at least six parameters')
 
             # Check polarity & position parameters
-            if tmp[0].lower() not in ('x', 'y', 'z'):
-                raise CmdInputError("'" + cmdname + ': ' + ' '.join(tmp) + "'" + ' polarisation must be x, y, or z')
+            if tmp[0].lower() not in ('x', 'y', 'z', '-z'):
+                raise CmdInputError("'" + cmdname + ': ' + ' '.join(tmp) + "'" + ' polarisation must be x, y, z, or -z')
 
             xcoord = G.calculate_coord('x', tmp[1])
             ycoord = G.calculate_coord('y', tmp[2])
@@ -284,7 +284,11 @@ def process_multicmds(multicmds, G):
             t.zcoord = zcoord
             t.ID = 'TransmissionLine(' + str(t.xcoord) + ',' + str(t.ycoord) + ',' + str(t.zcoord) + ')'
             t.resistance = resistance
-            t.waveformID = tmp[5]
+            t.waveform = G.getWaveform(tmp[5])
+
+            if '-' in t.polarisation:
+                t.waveform.polarity = 0
+
             t.calculate_incident_V_I(G)
 
             if len(tmp) > 6:
@@ -309,7 +313,7 @@ def process_multicmds(multicmds, G):
                 startstop = ' '
 
             if G.messages:
-                print('Transmission line with polarity {} at {:g}m, {:g}m, {:g}m, resistance {:.1f} Ohms,'.format(t.polarisation, t.xcoord * G.dx, t.ycoord * G.dy, t.zcoord * G.dz, t.resistance) + startstop + 'using waveform {} created.'.format(t.waveformID))
+                print('Transmission line with polarity {} at {:g}m, {:g}m, {:g}m, resistance {:.1f} Ohms,'.format(t.polarisation, t.xcoord * G.dx, t.ycoord * G.dy, t.zcoord * G.dz, t.resistance) + startstop + 'using waveform {} created.'.format(t.waveform.ID))
 
             G.transmissionlines.append(t)
 

@@ -103,6 +103,7 @@ class FDTDGrid(Grid):
         self.rxstepy = 0
         self.rxstepz = 0
         self.snapshots = []
+        self.timestep = None
 
     def initialise_geometry_arrays(self):
         """Initialise an array for volumetric material IDs (solid); boolean arrays for specifying whether materials can have dielectric smoothing (rigid);
@@ -122,6 +123,10 @@ class FDTDGrid(Grid):
         self.Hx = np.zeros((self.nx + 1, self.ny, self.nz), dtype=floattype)
         self.Hy = np.zeros((self.nx, self.ny + 1, self.nz), dtype=floattype)
         self.Hz = np.zeros((self.nx, self.ny, self.nz + 1), dtype=floattype)
+
+    def getWaveform(self, id):
+        waveform = next(x for x in self.waveforms if x.ID == id)
+        return waveform
 
     def initialise_std_update_coeff_arrays(self):
         """Initialise arrays for storing update coefficients."""
@@ -156,7 +161,7 @@ def dispersion_check(G):
         if waveform.type == 'sine' or waveform.type == 'contsine':
             maxfreqs.append(4 * waveform.freq)
 
-        elif waveform.type == 'impulse':
+        elif waveform.type in ['impulse', 'zero']:
             pass
 
         else:

@@ -21,7 +21,4 @@ antenna = create_dipole(centre[0], centre[1], centre[2])
 
 scene.add(title, domain, dxdydz, time_window, antenna)
 
-# Geometry view of entire domain
-#geometry_view(0, 0, 0, domain[0], domain[1], domain[2], dxdydz[0], dxdydz[1], dxdydz[2], title, 'f')
-
 gprMax.run(scene=scene)

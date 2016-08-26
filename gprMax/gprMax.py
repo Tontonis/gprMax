@@ -48,6 +48,7 @@ from .receivers import store_outputs
 from .utilities import logo, human_size, get_machine_cpu_os, get_terminal_width
 from .writer_hdf5 import write_hdf5
 from .yee_cell_build import build_electric_components, build_magnetic_components
+from .geometry_objects import write_scene
 
 
 def main():
@@ -71,15 +72,17 @@ def main():
     run_main(args)
 
 
-def api(inputfile, n=1, mpi=False, benchmark=False, geometry_only=False, geometry_fixed=False, write_processed=False, opt_taguchi=False):
+def api(scene, n=1, mpi=False, benchmark=False, geometry_only=False, geometry_fixed=False, write_processed=False, opt_taguchi=False):
     """If installed as a module this is the entry point."""
+
+    fp = write_scene(scene)
 
     class ImportArguments:
         pass
 
     args = ImportArguments()
 
-    args.inputfile = inputfile
+    args.inputfile = fp
     args.n = n
     args.mpi = mpi
     args.benchmark = benchmark
@@ -514,5 +517,9 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
         # If geometry information to be reused between model runs then FDTDGrid class instance must be global so that it persists
         if not args.geometry_fixed:
             del G
+
+        # Clean up the input file if not wanted
+        if not args.write_processed:
+            os.remove(args.inputfile)
 
         return int(tsolveend - tsolvestart)

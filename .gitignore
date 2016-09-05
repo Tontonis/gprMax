@@ -26,6 +26,9 @@ dist/
 *.egg-info/
 gprMax/bin/
 
+# Dist
+dist/
+
 # Backup files
 *~
 

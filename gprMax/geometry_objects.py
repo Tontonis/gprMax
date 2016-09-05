@@ -1,6 +1,7 @@
 from .data_structures import Node
 from .data_structures import TreeWalker
 from slugify import slugify
+import os
 
 
 class GPRObject(Node):
@@ -30,6 +31,7 @@ class GPRObjectCreator:
             'waveform': '#waveform: {} {} {} {}',
             'voltage_source': '#voltage_source: {} {} {} {} {} {}',
             'cylinder': '#cylinder: {} {} {} {} {} {} {} {}',
+            'triangle': '#triangle: {} {} {} {} {} {} {} {} {} {} {}',
             'hertzian_dipole': '#hertzian_dipole: {} {} {} {} {} {} {}',
             'snapshot': '#snapshot: {} {} {} {} {} {} {} {} {} {} snapshot{}',
             'rx': '#rx: {} {} {}',
@@ -39,7 +41,8 @@ class GPRObjectCreator:
             'time_window': '#time_window: {}',
             'wrapper': 'wrapper',
             'waveform': '#waveform: {} {} {} {}',
-            'transmission_line': '#transmission_line: {} {} {} {} {} {}'
+            'transmission_line': '#transmission_line: {} {} {} {} {} {}',
+            'sma_transmission_line': '#sma_transmission_line: {} {} {} {} {} {}',
         }
 
     def create(self, name, *args):
@@ -59,30 +62,41 @@ class Scene(Node):
         Node.__init__(self, 'scene')
 
     def to_commands(self):
+        print('to_commands')
         s = ''
         tw = TreeWalker()
         nodes = tw.getBreadthFirstNodes(self)
+        print(nodes)
         for node in nodes:
             if node.name != 'wrapper':
-                s += node.to_command() + '\n'
+                s += node.to_command() + os.linesep
+        print(s)
         return s
 
-    def getTitle(self):
+    def getLast(self):
         tw = TreeWalker()
-        t = tw.getNode(self, 'title').args[0]
+        nodes = tw.getBreadthFirstNodes(self)
+        for node in reversed(nodes):
+            if node.name == 'wrapper':
+                return node
+        return None
+
+
+    def getObj(self, name):
+        tw = TreeWalker()
+        t = tw.getNode(self, name)
         return t
 
-    def write(self):
-        filepath = self.getTitle() + '.in'
-        f = open(filepath, 'w')
-        f.write(self.to_commands())
-        f.close()
-        return filepath
+    def getTitle(self):
+        return self.getObj('title')
+
+    def getDomain(self):
+        return self.getObj('domain')
 
 
 def write_scene(scene):
     commands = scene.to_commands()
-    t = scene.getTitle()
+    t = scene.getTitle().args[0]
     fp = slugify(t) + '.in'
     with open(fp, 'w') as f:
         f.write(commands)

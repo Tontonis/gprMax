@@ -10,6 +10,16 @@
 # Mac OS X
 .DS_Store
 
+# gprMax outputs
+*.out
+*.xdmf
+*.vti
+*.vtp
+
+# Possible user generated files
+*.csv
+*.mp4
+
 # build, dist and egg-info directories
 build/
 dist/

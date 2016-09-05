@@ -67,12 +67,15 @@ def main():
     parser.add_argument('--geometry-fixed', action='store_true', default=False, help='flag to not reprocess model geometry, e.g. for B-scans where the geometry is fixed')
     parser.add_argument('--write-processed', action='store_true', default=False, help='flag to write an input file after any Python code and include commands in the original input file have been processed')
     parser.add_argument('--opt-taguchi', action='store_true', default=False, help='flag to optimise parameters using the Taguchi optimisation method')
+    parser.add_argument('--xdmf-output', action='store_true', default=False, help='store geometry view in XDMF Format')
     args = parser.parse_args()
+
+    args.interface = 'cli'
 
     run_main(args)
 
 
-def api(scene, n=1, mpi=False, benchmark=False, geometry_only=False, geometry_fixed=False, write_processed=False, opt_taguchi=False):
+def api(scene, n=1, mpi=False, benchmark=False, geometry_only=False, geometry_fixed=False, write_processed=False, opt_taguchi=False, xdmf_output=False):
     """If installed as a module this is the entry point."""
 
     fp = write_scene(scene)
@@ -90,6 +93,8 @@ def api(scene, n=1, mpi=False, benchmark=False, geometry_only=False, geometry_fi
     args.geometry_fixed = geometry_fixed
     args.write_processed = write_processed
     args.opt_taguchi = opt_taguchi
+    args.xdmf_output = xdmf_output
+    args.interface = 'api'
 
     run_main(args)
 
@@ -420,9 +425,11 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
             geometryview.set_filename(modelrun, numbermodelruns, G)
             geoiters = 6 * (((geometryview.xf - geometryview.xs) / geometryview.dx) * ((geometryview.yf - geometryview.ys) / geometryview.dy) * ((geometryview.zf - geometryview.zs) / geometryview.dz))
             pbar = tqdm(total=geoiters, unit='byte', unit_scale=True, desc='Writing geometry file {} of {}, {}'.format(i + 1, len(G.geometryviews), os.path.split(geometryview.filename)[1]), ncols=get_terminal_width() - 1, file=sys.stdout, disable=G.tqdmdisable)
-            geometryview.write_vtk(modelrun, numbermodelruns, G, pbar)
+            if not args.xdmf_output:
+                geometryview.write_vtk(modelrun, numbermodelruns, G, pbar)
+            else:
+                geometryview.write_xdmf(modelrun, numbermodelruns, G)
             pbar.close()
-            # geometryview.write_xdmf(modelrun, numbermodelruns, G)
 
     # Run simulation (if not doing geometry only)
     if not args.geometry_only:
@@ -519,7 +526,7 @@ def run_model(args, modelrun, numbermodelruns, inputfile, usernamespace):
             del G
 
         # Clean up the input file if not wanted
-        if not args.write_processed:
+        if not args.write_processed and args.interface == 'api':
             os.remove(args.inputfile)
 
         return int(tsolveend - tsolvestart)

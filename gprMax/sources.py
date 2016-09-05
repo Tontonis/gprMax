@@ -19,14 +19,14 @@
 from copy import deepcopy
 
 import numpy as np
-
+import math
 from gprMax.constants import c, floattype
 from gprMax.grid import Ix, Iy, Iz
 from gprMax.utilities import round_value
 from .conf import store_total_I_line, store_total_V_line
 
 
-class Source(object):
+class Source:
     """Super-class which describes a generic source."""
 
     def __init__(self):
@@ -47,7 +47,7 @@ class VoltageSource(Source):
     """The voltage source can be a hard source if it's resistance is zero, i.e. the time variation of the specified electric field component is prescribed. If it's resistance is non-zero it behaves as a resistive voltage source."""
 
     def __init__(self):
-        super(Source, self).__init__()
+        super().__init__()
         self.resistance = None
 
     def update_electric(self, abstime, updatecoeffsE, ID, Ex, Ey, Ez, G):
@@ -74,7 +74,10 @@ class VoltageSource(Source):
                     componentID = 'E' + self.polarisation
                     Ex[i, j, k] -= updatecoeffsE[ID[G.IDlookup[componentID], i, j, k], 4] * waveform.amp * waveform.calculate_value(time, G.dt) * (1 / (self.resistance * G.dy * G.dz))
                 else:
-                    Ex[i, j, k] = -1 * waveform.amp * waveform.calculate_value(time, G.dt) / G.dx
+                    # update all the cells along the line
+                    v = -1 * waveform.amp * waveform.calculate_value(time, G.dt) / G.dx
+                    for cell_index in range(0, 12):
+                        Ex[i + 2 + cell_index, j, k] = v
 
             elif self.polarisation is 'y':
                 if self.resistance != 0:
@@ -127,7 +130,7 @@ class HertzianDipole(Source):
     """The Hertzian dipole is an additive source (electric current density)."""
 
     def __init__(self):
-        super(Source, self).__init__()
+        super().__init__()
 
     def update_electric(self, abstime, updatecoeffsE, ID, Ex, Ey, Ez, G):
         """Updates electric field values for a Hertzian dipole.
@@ -165,7 +168,7 @@ class MagneticDipole(Source):
     """The magnetic dipole is an additive source (magnetic current density)."""
 
     def __init__(self):
-        super(Source, self).__init__()
+        super().__init__()
 
     def update_magnetic(self, abstime, updatecoeffsH, ID, Hx, Hy, Hz, G):
         """Updates magnetic field values for a magnetic dipole.
@@ -205,7 +208,7 @@ class TransmissionLine(Source):
             G (class): Grid class instance - holds essential parameters describing the model.
         """
 
-        super(Source, self).__init__()
+        super().__init__()
         self.resistance = None
 
         self.waveform = None
@@ -337,10 +340,14 @@ class TransmissionLine(Source):
                 Ey[i, j, k] = - self.voltage[self.antpos] / G.dy
 
             elif self.polarisation is 'z':
-                Ez[i, j, k] = - self.voltage[self.antpos] / G.dz
+                self.updateElectricZPolarisation(i, j, k, G)
 
             elif self.polarisation == '-z':
                 Ez[i, j, k] = self.voltage[self.antpos] / G.dz
+
+    def updateElectricZPolarisation(self, i, j, k, G):
+        G.Ez[i, j, k] = - self.voltage[self.antpos] / G.dz
+
 
     def update_magnetic(self, abstime, updatecoeffsH, ID, Hx, Hy, Hz, G):
         """Updates current value in transmission line from magnetic field values in the main grid.
@@ -368,9 +375,108 @@ class TransmissionLine(Source):
 
             elif self.polarisation is 'z':
                 #self.current[self.antpos] = (Iz(i, j, k, G.Hx, G.Hy, G) + Iz(i, j, k + 1, G.Hx, G.Hy, G)) / 2
-                self.current[self.antpos] = Iz(i, j, k, G.Hx, G.Hy, G)
+                self.current[self.antpos] = self.updateZCurrent(i, j, k, G)
 
             elif self.polarisation is '-z':
                 self.current[self.antpos] = Iz(i, j, k, G.Hx, G.Hy, G)
 
             self.update_current(time, G)
+
+    def updateZCurrent(self, i, j, k, G):
+        return Iz(i, j, k, G.Hx, G.Hy, G)
+
+
+class SMATransmissionLine(TransmissionLine):
+
+    def __init__(self, G):
+
+        super().__init__(G)
+        self.contour_checked = False
+        self.voltage_gap_checked = False
+
+    def updateZCurrent(self, i, j, k, G):
+        """Function to update the current in the transmission line
+
+        Update the current in the transmission line using a contour
+        about the central contact of the SMA. It is assumed that i, j, k
+        is the position at the centre of the contact.
+
+        Arguments:
+            i {int} -- x position centre of contact
+            j {int} -- y position centre of contact
+            k {int} -- z position centre of contact
+            G {FDTDGrid} -- FDTDGrid instance
+        """
+
+        # Move the index to the bottom left of the contour
+        i = i - 2
+        j = j - 2
+
+        if not self.contour_checked:
+            # Check that the material type at each index is not pec.
+            hx_indices = [
+                [i, j - 1, k],
+                [i + 1, j - 1, k],
+                [i + 2, j - 1, k],
+                [i + 3, j - 1, k],
+                [i + 4, j - 1, k],
+                [i, j + 4, k],
+                [i + 1, j + 4, k],
+                [i + 2, j + 4, k],
+                [i + 3, j + 4, k],
+                [i + 4, j + 4, k]
+            ]
+            hy_indices = [
+                [i - 1, j, k],
+                [i - 1, j + 1, k],
+                [i - 1, j + 2, k],
+                [i - 1, j + 3, k],
+                [i - 1, j + 4, k],
+                [i + 4, j, k],
+                [i + 4, j + 1, k],
+                [i + 4, j + 2, k],
+                [i + 4, j + 3, k],
+                [i + 4, j + 4, k]
+            ]
+
+            for index in hx_indices:
+                if G.ID[3, index[0], index[1], index[2]] != 2:
+                    raise Exception(('ID at ({},{},{}) should be 2', index[0], index[1], index[2]))
+            for index in hy_indices:
+                if G.ID[4, index[0], index[1], index[2]] != 2:
+                    raise Exception(('ID at ({},{},{}) should be 2', index[0], index[1], index[2]))
+            self.contour_checked = True
+
+        hy_1 = G.Hy[i - 1, j, k] + G.Hy[i - 1, j + 1, k] + G.Hy[i - 1, j + 2, k] + G.Hy[i - 1, j + 3, k] + G.Hy[i - 1, j + 4, k]
+        hx_2 = G.Hx[i, j - 1, k] + G.Hx[i + 1, j - 1, k] + G.Hx[i + 2, j - 1, k] + G.Hx[i + 3, j - 1, k] + G.Hx[i + 4, j - 1, k]
+        hy_3 = G.Hy[i + 4, j, k] + G.Hy[i + 4, j + 1, k] + G.Hy[i + 4, j + 2, k] + G.Hy[i + 4, j + 3, k] + G.Hy[i + 4, j + 4, k]
+        hx_4 = G.Hx[i, j + 4, k] + G.Hx[i + 1, j + 4, k] + G.Hx[i + 2, j + 4, k] + G.Hx[i + 3, j + 4, k] + G.Hx[i + 4, j + 4, k]
+
+        current = 5 * G.dx * (hx_2 + hy_3 - hy_1 - hx_4)
+
+        if math.isnan(current):
+            raise Exception('Current is nan for {} {} {} Hx_2 {} Hy_3 {} Hy_1 {} Hx4 {} Hy_3 {} {} {} {}'.format(i, j, k, hx_2, hy_3, hy_1, hx_4, G.Hy[i + 4, j, k], G.Hy[i + 4, j + 1, k], G.Hy[i + 4, j + 2, k], G.Hy[i + 4, j + 3, k]))
+
+        return current
+
+    def updateElectricZPolarisation(self, i, j, k, G):
+        if not self.voltage_gap_checked:
+            # Check that the relevent components have the correct materials.
+            print('origin', i, j, k)
+            for cell_index in range(0, 12):
+                if G.ID[0, i + 2 + cell_index, j, k] != 3:
+                    raise Exception('ID at ({},{},{}) should be 3', i + 2 + cell_index, j, k)
+
+            # Should be pec
+            if G.ID[0, i + 1, j, k] != 0:
+                raise Exception('ID at ({},{},{}) should be 0', i + 1, j, k)
+
+            # Should be free space
+            if G.ID[0, i, j, k] != 1:
+                raise Exception('ID at ({},{},{}) should be 1', i, j, k)
+
+            self.voltage_gap_checked = True
+
+        for cell_index in range(0, 12):
+            print(- self.voltage[self.antpos] / G.dz)
+            G.Ex[i + 2 + cell_index, j, k] = - self.voltage[self.antpos] / G.dz

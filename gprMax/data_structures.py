@@ -29,6 +29,11 @@ class TreeWalker:
                     w.marked = True
                     q.append(w)
                     visited.append(w)
+
+        # Unmark the nodes so we can use again
+        for node in visited:
+            node.marked = False
+
         return visited
 
     def getDepthFirstNodes(self, tree):
@@ -43,30 +48,3 @@ class TreeWalker:
         for node in nodes:
             if node.name == name:
                 return node
-
-
-if __name__ == '__main__':
-
-    alpha = list(map(chr, range(97, 107)))
-    nodes = {c: Node(c) for c in alpha}
-
-    nodes['a'].children.append(nodes['b'])
-    nodes['a'].children.append(nodes['c'])
-
-    nodes['b'].children.append(nodes['d'])
-    nodes['b'].children.append(nodes['e'])
-    nodes['b'].children.append(nodes['f'])
-
-    nodes['c'].children.append(nodes['g'])
-
-    nodes['e'].children.append(nodes['h'])
-    nodes['e'].children.append(nodes['i'])
-
-    nodes['g'].children.append(nodes['j'])
-
-    tw = TreeWalker()
-    nl = tw.getBreadthFirstNodes(nodes['a'])
-    print([i.name for i in nl])
-
-    nl2 = tw.getDepthFirstNodes(nodes['a'])
-    print([i.name for i in nl2])

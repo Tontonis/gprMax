@@ -27,7 +27,7 @@ from gprMax.materials import Material, PeplinskiSoil
 from gprMax.pml import CFSParameter, CFS
 from gprMax.receivers import Rx
 from gprMax.snapshots import Snapshot
-from gprMax.sources import VoltageSource, HertzianDipole, MagneticDipole, TransmissionLine, SMATransmissionLine
+from gprMax.sources import VoltageSource, HertzianDipole, MagneticDipole, TransmissionLine, SMATransmissionLine, MonopoleCoaxial
 from gprMax.utilities import round_value
 from gprMax.waveforms import Waveform
 
@@ -283,9 +283,12 @@ def process_multicmds(multicmds, G):
                 if cmdname == '#transmission_line':
                     t = TransmissionLine(G)
                     name = 'TransmissionLine'
-                else:
+                elif cmdname == '#sma_transmission_line':
                     t = SMATransmissionLine(G)
                     name = 'SMATransmissionLine'
+                else:
+                    t = MonopoleCoaxial(G)
+                    name = 'MonopoleCoaxial'
 
                 t.polarisation = tmp[0]
                 t.xcoord = xcoord
@@ -327,7 +330,7 @@ def process_multicmds(multicmds, G):
                 G.transmissionlines.append(t)
 
 
-    [create_transmission_line(c) for c in ['#transmission_line', '#sma_transmission_line']]
+    [create_transmission_line(c) for c in ['#transmission_line', '#sma_transmission_line', '#monopole_coaxial']]
 
 
     # Receiver

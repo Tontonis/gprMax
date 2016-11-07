@@ -26,6 +26,7 @@ class GPRObjectCreator:
             'time_window': '#time_window: {}',
             'title': '#title: {}',
             'edge': '#edge: {} {} {} {} {} {} {}',
+            'plate': '#plate: {} {} {} {} {} {} {}',
             'box': '#box: {} {} {} {} {} {} {}',
             'domain': '#domain: {} {} {}',
             'waveform': '#waveform: {} {} {} {}',
@@ -43,6 +44,7 @@ class GPRObjectCreator:
             'waveform': '#waveform: {} {} {} {}',
             'transmission_line': '#transmission_line: {} {} {} {} {} {}',
             'sma_transmission_line': '#sma_transmission_line: {} {} {} {} {} {}',
+            'monopole_coaxial': '#monopole_coaxial: {} {} {} {} {} {}',
         }
 
     def create(self, name, *args):

@@ -76,8 +76,9 @@ class VoltageSource(Source):
                 else:
                     # update all the cells along the line
                     v = -1 * waveform.amp * waveform.calculate_value(time, G.dt) / G.dx
-                    for cell_index in range(0, 12):
-                        Ex[i + 2 + cell_index, j, k] = v
+                    #for cell_index in range(0, 12):
+                    #    Ex[i + 2 + cell_index, j, k] = v
+                    Ex[i, j, k] = v
 
             elif self.polarisation is 'y':
                 if self.resistance != 0:
@@ -346,6 +347,23 @@ class TransmissionLine(Source):
                 Ez[i, j, k] = self.voltage[self.antpos] / G.dz
 
     def updateElectricZPolarisation(self, i, j, k, G):
+        """
+        COAXIAL LINE CODE
+        if G.ID[0, i, j, k] != 1:
+            raise Exception('{} {} {} should be freespace')
+        if G.ID[0, i - 1, j, k] != 1:
+            raise Exception('{} {} {} should be freespace')
+        if G.ID[1, i, j, k] != 1:
+            raise Exception('{} {} {} should be freespace')
+        if G.ID[1, i, j - 1, k] != 1:
+            raise Exception('{} {} {} should be freespace')
+        if G.ID[2, i, j, k] != 0:
+            raise Exception('The monopole should be here!')
+        if G.ID[0, i + 1, j, k] != 0:
+            raise Exception('{} {} {} should be pec')
+
+        G.Ex[i, j, k] = - self.voltage[self.antpos] / G.dx
+        """
         G.Ez[i, j, k] = - self.voltage[self.antpos] / G.dz
 
 
@@ -383,6 +401,41 @@ class TransmissionLine(Source):
             self.update_current(time, G)
 
     def updateZCurrent(self, i, j, k, G):
+        c = Iz(i, j, k, G.Hx, G.Hy, G)
+        if math.isnan(c):
+            raise Exception('current is nan')
+        return c
+
+
+class MonopoleCoaxial(TransmissionLine):
+
+    def __init__(self, G):
+        super().__init__(G)
+        self.voltage_gap_checked = False
+
+    def updateElectricZPolarisation(self, i, j, k, G):
+
+        if not self.voltage_gap_checked:
+            self.voltage_gap_checked = True
+
+            if G.ID[0, i, j, k] != 1:
+                raise Exception('should be free space at {} {} {}'.format(i, j, k))
+            if G.ID[1, i, j, k] != 1:
+                raise Exception('should be free space at {} {} {}'.format(i, j, k))
+            if G.ID[0, i - 1, j, k] != 1:
+                raise Exception('should be free space at {} {} {}'.format(i, j, k))
+            if G.ID[1, i, j - 1, k] != 1:
+                raise Exception('should be free space at {} {} {}'.format(i, j, k))
+
+        G.Ex[i, j, k] = - self.voltage[self.antpos] / G.dx
+        #G.Ey[i, j, k] = - self.voltage[self.antpos] / G.dy
+        #G.Ex[i - 1, j, k] = self.voltage[self.antpos] / G.dx
+        #G.Ey[i, j - 1, k] = self.voltage[self.antpos] / G.dy
+
+    def updateZCurrent(self, i, j, k, G):
+        if G.ID[2, i, j, k] != 0:
+            raise Exception('should be pec at {} {} {}'.format(i, j, k))
+
         return Iz(i, j, k, G.Hx, G.Hy, G)
 
 
@@ -455,9 +508,9 @@ class SMATransmissionLine(TransmissionLine):
         current = 5 * G.dx * (hx_2 + hy_3 - hy_1 - hx_4)
 
         if math.isnan(current):
-            raise Exception('Current is nan for {} {} {} Hx_2 {} Hy_3 {} Hy_1 {} Hx4 {} Hy_3 {} {} {} {}'.format(i, j, k, hx_2, hy_3, hy_1, hx_4, G.Hy[i + 4, j, k], G.Hy[i + 4, j + 1, k], G.Hy[i + 4, j + 2, k], G.Hy[i + 4, j + 3, k]))
+            raise Exception('Current is nan for index[{} {} {} Hx_2 {} Hy_3 {} Hy_1 {} Hx4 {} Hy_3 {} {} {} {}'.format(i, j, k, hx_2, hy_3, hy_1, hx_4, G.Hy[i + 4, j, k], G.Hy[i + 4, j + 1, k], G.Hy[i + 4, j + 2, k], G.Hy[i + 4, j + 3, k]))
 
-        return current
+        return 0
 
     def updateElectricZPolarisation(self, i, j, k, G):
         if not self.voltage_gap_checked:
@@ -478,5 +531,6 @@ class SMATransmissionLine(TransmissionLine):
             self.voltage_gap_checked = True
 
         for cell_index in range(0, 12):
-            print(- self.voltage[self.antpos] / G.dz)
+            #print(- self.voltage[self.antpos] / G.dz)
             G.Ex[i + 2 + cell_index, j, k] = - self.voltage[self.antpos] / G.dz
+

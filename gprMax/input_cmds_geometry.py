@@ -48,6 +48,7 @@ def process_geometrycmds(geometry, G):
         tqdmdisable = G.tqdmdisable
 
     for object in tqdm(geometry, desc='Processing geometry related cmds', unit='cmds', ncols=get_terminal_width() - 1, file=sys.stdout, disable=tqdmdisable):
+
         tmp = object.split()
 
         if tmp[0] == '#geometry_objects_file:':

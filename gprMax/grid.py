@@ -18,12 +18,16 @@
 
 from collections import OrderedDict
 
-from colorama import init, Fore, Style
+from colorama import init
+from colorama import Fore
+from colorama import Style
 init()
 import numpy as np
 np.seterr(invalid='raise')
 
-from gprMax.constants import c, floattype, complextype
+from gprMax.constants import c
+from gprMax.constants import floattype
+from gprMax.constants import complextype
 from gprMax.materials import Material
 from gprMax.pml import PML
 from gprMax.utilities import round_value
@@ -71,7 +75,10 @@ class Grid(object):
 
 
 class FDTDGrid(Grid):
-    """Holds attributes associated with the entire grid. A convenient way for accessing regularly used parameters."""
+    """
+    Holds attributes associated with the entire grid. A convenient
+    way for accessing regularly used parameters.
+    """
 
     def __init__(self):
         self.inputfilename = ''
@@ -80,11 +87,22 @@ class FDTDGrid(Grid):
         self.messages = True
         self.tqdmdisable = False
 
+        # Get information about host machine
+        self.hostinfo = None
+        
         # CPU - OpenMP threads
         self.nthreads = 0
+        
+        # GPU
+        # Threads per block
+        self.tpb = (256, 1, 1)
+        
+        # GPU object
+        self.gpu = None
 
-        # Threshold (dB) down from maximum power (0dB) of main frequency used to calculate highest frequency for disperion analysis
-        self.highestfreqthres = 60
+        # Threshold (dB) down from maximum power (0dB) of main frequency used
+        # to calculate highest frequency for numerical dispersion analysis
+        self.highestfreqthres = 40
         # Maximum allowable percentage physical phase-velocity phase error
         self.maxnumericaldisp = 2
         # Minimum grid sampling of smallest wavelength for physical wave propagation
@@ -101,7 +119,10 @@ class FDTDGrid(Grid):
         self.iterations = 0
         self.timewindow = 0
 
-        # Ordered dictionary required so that PMLs are always updated in the same order. The order itself does not matter, however, if must be the same from model to model otherwise the numerical precision from adding the PML corrections will be different.
+        # Ordered dictionary required so that PMLs are always updated in the
+        # same order. The order itself does not matter, however, if must be the
+        # same from model to model otherwise the numerical precision from adding
+        # the PML corrections will be different.
         self.pmlthickness = OrderedDict((key, 10) for key in PML.boundaryIDs)
         self.cfs = []
         self.pmls = []
@@ -123,8 +144,12 @@ class FDTDGrid(Grid):
         self.snapshots = []
 
     def initialise_geometry_arrays(self):
-        """Initialise an array for volumetric material IDs (solid); boolean arrays for specifying whether materials can have dielectric smoothing (rigid);
-            and an array for cell edge IDs (ID). Solid and ID arrays are initialised to free_space (one); rigid arrays to allow dielectric smoothing (zero).
+        """
+        Initialise an array for volumetric material IDs (solid);
+            boolean arrays for specifying whether materials can have dielectric smoothing (rigid);
+            and an array for cell edge IDs (ID).
+        Solid and ID arrays are initialised to free_space (one);
+            rigid arrays to allow dielectric smoothing (zero).
         """
         self.solid = np.ones((self.nx, self.ny, self.nz), dtype=np.uint32)
         self.rigidE = np.zeros((12, self.nx, self.ny, self.nz), dtype=np.int8)
@@ -153,9 +178,38 @@ class FDTDGrid(Grid):
         self.Tz = np.zeros((Material.maxpoles, self.nx + 1, self.ny + 1, self.nz + 1), dtype=complextype)
         self.updatecoeffsdispersive = np.zeros((len(self.materials), 3 * Material.maxpoles), dtype=complextype)
 
+    def gpu_set_blocks_per_grid(self):
+        """Set the blocks per grid size used for updating the electric and magnetic field arrays on a GPU."""
+        self.bpg = (int(np.ceil(((self.nx + 1) * (self.ny + 1) * (self.nz + 1)) / self.tpb[0])), 1, 1)
+
+    def gpu_initialise_arrays(self):
+        """Initialise standard field arrays on GPU."""
+
+        import pycuda.gpuarray as gpuarray
+
+        self.ID_gpu = gpuarray.to_gpu(self.ID)
+        self.Ex_gpu = gpuarray.to_gpu(self.Ex)
+        self.Ey_gpu = gpuarray.to_gpu(self.Ey)
+        self.Ez_gpu = gpuarray.to_gpu(self.Ez)
+        self.Hx_gpu = gpuarray.to_gpu(self.Hx)
+        self.Hy_gpu = gpuarray.to_gpu(self.Hy)
+        self.Hz_gpu = gpuarray.to_gpu(self.Hz)
+
+    def gpu_initialise_dispersive_arrays(self):
+        """Initialise dispersive material coefficient arrays on GPU."""
+
+        import pycuda.gpuarray as gpuarray
+
+        self.Tx_gpu = gpuarray.to_gpu(self.Tx)
+        self.Ty_gpu = gpuarray.to_gpu(self.Ty)
+        self.Tz_gpu = gpuarray.to_gpu(self.Tz)
+        self.updatecoeffsdispersive_gpu = gpuarray.to_gpu(self.updatecoeffsdispersive)
+
 
 def dispersion_analysis(G):
-    """Analysis of numerical dispersion (Taflove et al, 2005, p112) - worse case of maximum frequency and minimum wavelength
+    """
+    Analysis of numerical dispersion (Taflove et al, 2005, p112) -
+        worse case of maximum frequency and minimum wavelength
 
     Args:
         G (class): Grid class instance - holds essential parameters describing the model.
@@ -164,52 +218,56 @@ def dispersion_analysis(G):
         results (dict): Results from dispersion analysis
     """
 
-    # Physical phase velocity error (percentage); grid sampling density; material with maximum permittivity; maximum significant frequency
-    results = {'deltavp': False, 'N': False, 'material': False, 'maxfreq': []}
+    # Physical phase velocity error (percentage); grid sampling density;
+    # material with maximum permittivity; maximum significant frequency
+    results = {'deltavp': False, 'N': False, 'waveform': True, 'material': False, 'maxfreq': []}
 
     # Find maximum significant frequency
-    for waveform in G.waveforms:
+    if G.waveforms:
+        for waveform in G.waveforms:
+            if waveform.type == 'sine' or waveform.type == 'contsine':
+                results['maxfreq'].append(4 * waveform.freq)
 
-        if waveform.type == 'sine' or waveform.type == 'contsine':
-            results['maxfreq'].append(4 * waveform.freq)
-
-        elif waveform.type == 'impulse':
-            pass
-
-        else:
-            # User-defined waveform
-            if waveform.type == 'user':
-                waveformvalues = waveform.uservalues
-
-            # Built-in waveform
-            else:
-                time = np.linspace(0, 1, G.iterations)
-                time *= (G.iterations * G.dt)
-                waveformvalues = np.zeros(len(time))
-                timeiter = np.nditer(time, flags=['c_index'])
-
-                while not timeiter.finished:
-                    waveformvalues[timeiter.index] = waveform.calculate_value(timeiter[0], G.dt)
-                    timeiter.iternext()
-
-            # Ensure source waveform is not being overly truncated before attempting any FFT
-            if np.abs(waveformvalues[-1]) < np.abs(np.amax(waveformvalues)) / 100:
-                # Calculate magnitude of frequency spectra of waveform
-                power = 10 * np.log10(np.abs(np.fft.fft(waveformvalues))**2)
-                freqs = np.fft.fftfreq(power.size, d=G.dt)
-
-                # Shift powers so that frequency with maximum power is at zero decibels
-                power -= np.amax(power)
-
-                # Get frequency for max power
-                freqmaxpower = np.where(np.isclose(power[1::], np.amax(power[1::])))[0][0]
-
-                # Set maximum frequency to a threshold drop from maximum power, ignoring DC value
-                freq = np.where((np.amax(power[freqmaxpower::]) - power[freqmaxpower::]) > G.highestfreqthres)[0][0] + 1
-                results['maxfreq'].append(freqs[freq])
+            elif waveform.type == 'impulse':
+                pass
 
             else:
-                results['waveformID'] = waveform.ID
+                # User-defined waveform
+                if waveform.type == 'user':
+                    waveformvalues = waveform.uservalues
+
+                # Built-in waveform
+                else:
+                    time = np.linspace(0, 1, G.iterations)
+                    time *= (G.iterations * G.dt)
+                    waveformvalues = np.zeros(len(time))
+                    timeiter = np.nditer(time, flags=['c_index'])
+
+                    while not timeiter.finished:
+                        waveformvalues[timeiter.index] = waveform.calculate_value(timeiter[0], G.dt)
+                        timeiter.iternext()
+
+                # Ensure source waveform is not being overly truncated before attempting any FFT
+                if np.abs(waveformvalues[-1]) < np.abs(np.amax(waveformvalues)) / 100:
+                    # Calculate magnitude of frequency spectra of waveform
+                    power = 10 * np.log10(np.abs(np.fft.fft(waveformvalues))**2)
+                    freqs = np.fft.fftfreq(power.size, d=G.dt)
+
+                    # Shift powers so that frequency with maximum power is at zero decibels
+                    power -= np.amax(power)
+
+                    # Get frequency for max power
+                    freqmaxpower = np.where(np.isclose(power[1::], np.amax(power[1::])))[0][0]
+
+                    # Set maximum frequency to a threshold drop from maximum power, ignoring DC value
+                    freq = np.where((np.amax(power[freqmaxpower::]) - power[freqmaxpower::]) > G.highestfreqthres)[0][0] + 1
+                    results['maxfreq'].append(freqs[freq])
+
+                # If waveform is truncated don't do any further analysis
+                else:
+                    results['waveform'] = False
+    else:
+        results['waveform'] = False
 
     if results['maxfreq']:
         results['maxfreq'] = max(results['maxfreq'])
@@ -220,8 +278,11 @@ def dispersion_analysis(G):
         for x in G.materials:
             if x.se != float('inf'):
                 er = x.er
-                if x.deltaer:
-                    er += max(x.deltaer)
+                # If there are dispersive materials calculate the complex relative permittivity
+                # at maximum frequency and take the real part
+                if x.poles > 0:
+                    er = x.calculate_er(results['maxfreq'])
+                    er = er.real
                 if er > maxer:
                     maxer = er
                     matmaxer = x.ID

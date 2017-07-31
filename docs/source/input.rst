@@ -156,7 +156,7 @@ where ``c1`` can be either y (yes) or n (no) which turns on or off the messages 
 #num_threads:
 -----------------
 
-Allows you to control how many OpenMP threads (usually the number of physical CPU cores available) are used when running the model. The most computationally intensive parts of gprMax, which are the FDTD solver loops, have been parallelised using OpenMP (http://openmp.org) which supports multi-platform shared memory multiprocessing. The syntax of the command is:
+Allows you to control how many OpenMP threads (usually the number of physical CPU cores available) are used when running the model. The most computationally intensive parts of gprMax, which are the FDTD solver loops, have been parallelised using `OpenMP <http://openmp.org>`_ which supports multi-platform shared memory multiprocessing. The syntax of the command is:
 
 .. code-block:: none
 
@@ -366,7 +366,7 @@ At the boundaries between different materials in the model there is the question
 
     * If a material has dispersive properties then dielectric smoothing is automatically turned off for that material.
     * If an object is anistropic then dielectric smoothing is automatically turned off for that object.
-    * Non-volumetric object building commands, ``#edge``, ``#plate``, and ``#triangle`` (applies to triangular path not triangular prism) cannot have dielectric smoothing.
+    * Non-volumetric object building commands, ``#edge``, ``#plate``, and ``#triangle`` (applies to triangular patch not triangular prism) cannot have dielectric smoothing.
 
 
 .. _geometryview:
@@ -374,7 +374,7 @@ At the boundaries between different materials in the model there is the question
 #geometry_view:
 ---------------
 
-Allows you output to file(s) information about the geometry of model. The file(s) use the open source Visualization ToolKit (VTK) (http://www.vtk.org) format which can be viewed in many free readers, such as Paraview (http://www.paraview.org). The command can be used to create several 3D views of the model which are useful for checking that it has been constructed as desired. The syntax of the command is:
+Allows you output to file(s) information about the geometry of model. The file(s) use the open source `Visualization ToolKit (VTK) <http://www.vtk.org>`_ format which can be viewed in many free readers, such as `Paraview <http://www.paraview.org>`_. The command can be used to create several 3D views of the model which are useful for checking that it has been constructed as desired. The syntax of the command is:
 
 .. code-block:: none
 
@@ -661,17 +661,22 @@ Allows you to specify waveforms to use with sources in the model. The syntax of 
     * ``gaussiandotdot`` which is the second derivative of a Gaussian waveform.
     * ``gaussiandotdotnorm`` which is the normalised second derivative of a Gaussian waveform.
     * ``ricker`` which is a Ricker (or Mexican hat) waveform, i.e. the negative, normalised second derivative of a Gaussian waveform.
+    * ``gaussianprime`` which is the first derivative of a Gaussian waveform, directly derived from the aforementioned ``gaussian`` (see notes below).
+    * ``gaussiandoubleprime`` which is the second derivative of a Gaussian waveform, directly derived from the aforementioned ``gaussian`` (see notes below).
     * ``sine`` which is a single cycle of a sine waveform.
     * ``contsine`` which is a continuous sine waveform. In order to avoid introducing noise into the calculation the amplitude of the waveform is modulated for the first cycle of the sine wave (ramp excitation).
 * ``f1`` is the scaling of the maximum amplitude of the waveform (for a ``#hertzian_dipole`` the units will be Amps, for a ``#voltage_source`` or ``#transmission_line`` the units will be Volts).
-* ``f2`` is the frequency of the waveform (Hertz).
+* ``f2`` is the centre frequency of the waveform (Hertz). In the case of the Gaussian waveform it is related to the pulse width.
 * ``str2`` is an identifier for the waveform used to assign it to a source.
 
-For example, to specify a Gaussian waveform with an amplitude of one and a centre frequency of 1.2 GHz, use: ``#waveform: gaussian 1 1.2e9 my_gauss_pulse``.
+For example, to specify the normalised first derivate of a Gaussian waveform with an amplitude of one and a centre frequency of 1.2GHz, use: ``#waveform: gaussiandotnorm 1 1.2e9 my_gauss_pulse``.
 
 .. note::
 
     * The functions used to create the waveforms can be found in the :ref:`tools section <waveforms>`.
+    * ``gaussiandot``, ``gaussiandotnorm``, ``gaussiandotdot``, ``gaussiandotdotnorm``, ``ricker`` waveforms have their centre frequencies specified by the user, i.e. they are not derived to the 'base' ``gaussian``
+    * ``gaussianprime`` and ``gaussiandoubleprime`` waveforms are the first derivative and second derivative of the 'base' ``gaussian`` waveform, i.e. the centre frequencies of the waveforms will rise for the first and second derivatives.
+
 
 #excitation_file:
 -----------------
@@ -761,8 +766,6 @@ This will simulate an infinitesimal magnetic dipole. This is often referred to a
 
 Allows you to introduce a voltage source at an electric field location. It can be a hard source if it's resistance is zero, i.e. the time variation of the specified electric field component is prescribed, or if it's resistance is non-zero it behaves as a resistive voltage source. It is useful for exciting antennas when the physical properties of the antenna are included in the model. The syntax of the command is:
 
-The voltage source
-
 .. code-block:: none
 
     #voltage_source: c1 f1 f2 f3 f4 str1 [f5 f6]
@@ -845,7 +848,7 @@ Provides a simple method to allow you to move the location of all simple sources
 #snapshot:
 ----------
 
-Allows you to obtain information about the electromagnetic fields within a volume of the model at a given time instant. The file(s) use the open source Visualization ToolKit (VTK) (http://www.vtk.org) format which can be viewed in many free readers, such as Paraview (http://www.paraview.org). The syntax of this command is:
+Allows you to obtain information about the electromagnetic fields within a volume of the model at a given time instant. The file(s) use the open source `Visualization ToolKit (VTK) <http://www.vtk.org>`_ format which can be viewed in many free readers, such as `Paraview <http://www.paraview.org>`_. The syntax of this command is:
 
 .. code-block:: none
 

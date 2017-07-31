@@ -24,9 +24,14 @@ from colorama import init, Fore, Style
 init()
 import numpy as np
 
-from gprMax.constants import c, floattype
-from gprMax.exceptions import CmdInputError, GeneralError
-from gprMax.utilities import get_host_info, human_size, memory_usage, round_value
+from gprMax.constants import c
+from gprMax.constants import floattype
+from gprMax.exceptions import CmdInputError
+from gprMax.exceptions import GeneralError
+from gprMax.utilities import get_host_info
+from gprMax.utilities import human_size
+from gprMax.utilities import memory_usage
+from gprMax.utilities import round_value
 from gprMax.waveforms import Waveform
 
 
@@ -41,7 +46,7 @@ def process_singlecmds(singlecmds, G):
     # Check validity of command parameters in order needed
     # messages
     cmd = '#messages'
-    if singlecmds[cmd] != 'None':
+    if singlecmds[cmd] is not None:
         tmp = singlecmds[cmd].split()
         if len(tmp) != 1:
             raise CmdInputError(cmd + ' requires exactly one parameter')
@@ -54,7 +59,7 @@ def process_singlecmds(singlecmds, G):
 
     # Title
     cmd = '#title'
-    if singlecmds[cmd] != 'None':
+    if singlecmds[cmd] is not None:
         G.title = singlecmds[cmd]
         if G.messages:
             print('Model title: {}'.format(G.title))
@@ -65,11 +70,19 @@ def process_singlecmds(singlecmds, G):
     # Number of threads (OpenMP) to use
     cmd = '#num_threads'
     if sys.platform == 'darwin':
-        os.environ['OMP_WAIT_POLICY'] = 'ACTIVE'  # What to do with threads when they are waiting; can drastically effect performance
-    os.environ['OMP_DYNAMIC'] = 'FALSE'
+        os.environ['OMP_WAIT_POLICY'] = 'ACTIVE'  # Should waiting threads consume CPU power (can drastically effect performance)
+    os.environ['OMP_DYNAMIC'] = 'FALSE'  # Number of threads may be adjusted by the run time environment to best utilize system resources
+    os.environ['OMP_PLACES'] = 'cores'  # Each place corresponds to a single core (having one or more hardware threads)
     os.environ['OMP_PROC_BIND'] = 'TRUE'  # Bind threads to physical cores
+    # os.environ['OMP_DISPLAY_ENV'] = 'TRUE' # Prints OMP version and environment variables (useful for debug)
 
-    if singlecmds[cmd] != 'None':
+    # Catch bug with Windows Subsystem for Linux (https://github.com/Microsoft/BashOnWindows/issues/785)
+    if 'Microsoft' in G.hostinfo['osversion']:
+        os.environ['KMP_AFFINITY'] = 'disabled'
+        del os.environ['OMP_PLACES']
+        del os.environ['OMP_PROC_BIND']
+
+    if singlecmds[cmd] is not None:
         tmp = tuple(int(x) for x in singlecmds[cmd].split())
         if len(tmp) != 1:
             raise CmdInputError(cmd + ' requires exactly one parameter to specify the number of threads to use')
@@ -81,13 +94,18 @@ def process_singlecmds(singlecmds, G):
         G.nthreads = int(os.environ.get('OMP_NUM_THREADS'))
     else:
         # Set number of threads to number of physical CPU cores
-        G.nthreads = hostinfo['cpucores']
+        G.nthreads = hostinfo['physicalcores']
         os.environ['OMP_NUM_THREADS'] = str(G.nthreads)
 
     if G.messages:
         print('Number of CPU (OpenMP) threads: {}'.format(G.nthreads))
-    if G.nthreads > hostinfo['cpucores']:
-        print(Fore.RED + 'WARNING: You have specified more threads ({}) than available physical CPU cores ({}). This may lead to degraded performance.'.format(G.nthreads, hostinfo['cpucores']) + Style.RESET_ALL)
+    if G.nthreads > G.hostinfo['physicalcores']:
+        print(Fore.RED + 'WARNING: You have specified more threads ({}) than available physical CPU cores ({}). This may lead to degraded performance.'.format(G.nthreads, hostinfo['physicalcores']) + Style.RESET_ALL)
+
+    # Print information about any GPU in use
+    if G.messages:
+        if G.gpu is not None:
+            print('GPU solving using: {} - {}'.format(G.gpu.deviceID, G.gpu.name))
 
     # Spatial discretisation
     cmd = '#dx_dy_dz'
@@ -121,8 +139,14 @@ def process_singlecmds(singlecmds, G):
 
     # Estimate memory (RAM) usage
     memestimate = memory_usage(G)
-    if memestimate > hostinfo['ram']:
-        print(Fore.RED + 'WARNING: Estimated memory (RAM) required ~{} exceeds {} detected!\n'.format(human_size(memestimate), human_size(hostinfo['ram'], a_kilobyte_is_1024_bytes=True)) + Style.RESET_ALL)
+    # Check if model can be built and/or run on host
+    if memestimate > G.hostinfo['ram']:
+        raise GeneralError('Estimated memory (RAM) required ~{} exceeds {} detected!\n'.format(human_size(memestimate), human_size(hostinfo['ram'], a_kilobyte_is_1024_bytes=True)))
+
+    # Check if model can be run on specified GPU if required
+    if G.gpu is not None:
+        if memestimate > G.gpu.totalmem:
+            raise GeneralError('Estimated memory (RAM) required ~{} exceeds {} detected on specified {} - {} GPU!\n'.format(human_size(memestimate), human_size(G.gpu.totalmem, a_kilobyte_is_1024_bytes=True), G.gpu.deviceID, G.gpu.name))
     if G.messages:
         print('Estimated memory (RAM) required: ~{}'.format(human_size(memestimate)))
 
@@ -154,7 +178,7 @@ def process_singlecmds(singlecmds, G):
 
     # Time step stability factor
     cmd = '#time_step_stability_factor'
-    if singlecmds[cmd] != 'None':
+    if singlecmds[cmd] is not None:
         tmp = tuple(float(x) for x in singlecmds[cmd].split())
         if len(tmp) != 1:
             raise CmdInputError(cmd + ' requires exactly one parameter')
@@ -189,7 +213,7 @@ def process_singlecmds(singlecmds, G):
 
     # PML
     cmd = '#pml_cells'
-    if singlecmds[cmd] != 'None':
+    if singlecmds[cmd] is not None:
         tmp = singlecmds[cmd].split()
         if len(tmp) != 1 and len(tmp) != 6:
             raise CmdInputError(cmd + ' requires either one or six parameters')
@@ -208,7 +232,7 @@ def process_singlecmds(singlecmds, G):
 
     # src_steps
     cmd = '#src_steps'
-    if singlecmds[cmd] != 'None':
+    if singlecmds[cmd] is not None:
         tmp = singlecmds[cmd].split()
         if len(tmp) != 3:
             raise CmdInputError(cmd + ' requires exactly three parameters')
@@ -220,7 +244,7 @@ def process_singlecmds(singlecmds, G):
 
     # rx_steps
     cmd = '#rx_steps'
-    if singlecmds[cmd] != 'None':
+    if singlecmds[cmd] is not None:
         tmp = singlecmds[cmd].split()
         if len(tmp) != 3:
             raise CmdInputError(cmd + ' requires exactly three parameters')
@@ -232,7 +256,7 @@ def process_singlecmds(singlecmds, G):
 
     # Excitation file for user-defined source waveforms
     cmd = '#excitation_file'
-    if singlecmds[cmd] != 'None':
+    if singlecmds[cmd] is not None:
         tmp = singlecmds[cmd].split()
         if len(tmp) != 1:
             raise CmdInputError(cmd + ' requires exactly one parameter')

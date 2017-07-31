@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with gprMax.  If not, see <http://www.gnu.org/licenses/>.
 
+from string import Template
+
 import h5py
 
 from gprMax._version import __version__
@@ -44,6 +46,47 @@ def store_outputs(iteration, Ex, Ey, Ez, Hx, Hy, Hz, G):
     for tl in G.transmissionlines:
         tl.Vtotal[iteration] = tl.voltage[tl.antpos]
         tl.Itotal[iteration] = tl.current[tl.antpos]
+
+
+kernel_template_store_outputs = Template("""
+
+// Macros for converting subscripts to linear index:
+#define INDEX2D_RXCOORDS(m, n) (m)*($NY_RXCOORDS)+(n)
+#define INDEX3D_RXS(i, j, k) (i)*($NY_RXS)*($NZ_RXS)+(j)*($NZ_RXS)+(k)
+#define INDEX3D_FIELDS(i, j, k) (i)*($NY_FIELDS)*($NZ_FIELDS)+(j)*($NZ_FIELDS)+(k)
+
+//////////////////////////////////////////////////////
+// Stores field component values for every receiver //
+//////////////////////////////////////////////////////
+
+__global__ void store_outputs(int NRX, int iteration, const int* __restrict__ rxcoords, $REAL *rxs, const $REAL* __restrict__ Ex, const $REAL* __restrict__ Ey, const $REAL* __restrict__ Ez, const $REAL* __restrict__ Hx, const $REAL* __restrict__ Hy, const $REAL* __restrict__ Hz) {
+
+    //  This function stores field component values for every receiver in the model.
+    //
+    //  Args:
+    //      NRX: Total number of receivers in the model
+    //      rxs: Array to store field components for receivers - rows are field components; columns are iterations; pages are receivers
+    //      E, H: Access to field component arrays
+    
+    // Obtain the linear index corresponding to the current thread and use for each receiver
+    int rx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int i, j, k;
+
+    if (rx < NRX) {
+        i = rxcoords[INDEX2D_RXCOORDS(rx,0)];
+        j = rxcoords[INDEX2D_RXCOORDS(rx,1)];
+        k = rxcoords[INDEX2D_RXCOORDS(rx,2)];
+        rxs[INDEX3D_RXS(0,iteration,rx)] = Ex[INDEX3D_FIELDS(i,j,k)];
+        rxs[INDEX3D_RXS(1,iteration,rx)] = Ey[INDEX3D_FIELDS(i,j,k)];
+        rxs[INDEX3D_RXS(2,iteration,rx)] = Ez[INDEX3D_FIELDS(i,j,k)];
+        rxs[INDEX3D_RXS(3,iteration,rx)] = Hx[INDEX3D_FIELDS(i,j,k)];
+        rxs[INDEX3D_RXS(4,iteration,rx)] = Hy[INDEX3D_FIELDS(i,j,k)];
+        rxs[INDEX3D_RXS(5,iteration,rx)] = Hz[INDEX3D_FIELDS(i,j,k)];
+    }
+}
+
+""")
 
 
 def write_hdf5_outputfile(outputfile, Ex, Ey, Ez, Hx, Hy, Hz, G):
@@ -75,7 +118,8 @@ def write_hdf5_outputfile(outputfile, Ex, Ey, Ez, Hx, Hy, Hz, G):
         grp.attrs['Type'] = type(src).__name__
         grp.attrs['Position'] = (src.xcoord * G.dx, src.ycoord * G.dy, src.zcoord * G.dz)
 
-    # Create group for transmission lines; add positional data, line resistance and line discretisation attributes; write arrays for line voltages and currents
+    # Create group for transmission lines; add positional data, line resistance and
+    # line discretisation attributes; write arrays for line voltages and currents
     for tlindex, tl in enumerate(G.transmissionlines):
         grp = f.create_group('/tls/tl' + str(tlindex + 1))
         grp.attrs['Position'] = (tl.xcoord * G.dx, tl.ycoord * G.dy, tl.zcoord * G.dz)

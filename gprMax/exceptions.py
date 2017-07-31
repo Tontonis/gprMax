@@ -18,10 +18,12 @@
 
 import sys
 
-from colorama import init, Fore
+from colorama import init
+from colorama import Fore
+
 init()
 
-sys.tracebacklimit = None
+#sys.tracebacklimit = None
 
 
 class GeneralError(ValueError):

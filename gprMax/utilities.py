@@ -26,11 +26,16 @@ from shutil import get_terminal_size
 import sys
 import textwrap
 
-from colorama import init, Fore, Style
+from colorama import init
+from colorama import Fore
+from colorama import Style
 init()
 import numpy as np
 
+from gprMax.constants import complextype
 from gprMax.constants import floattype
+from gprMax.exceptions import GeneralError
+from gprMax.materials import Material
 
 
 def get_terminal_width():
@@ -81,7 +86,9 @@ def logo(version):
 
 @contextmanager
 def open_path_file(path_or_file):
-    """Accepts either a path as a string or a file object and returns a file object (http://stackoverflow.com/a/6783680).
+    """
+    Accepts either a path as a string or a file object and returns a file
+    object (http://stackoverflow.com/a/6783680).
 
     Args:
         path_or_file: path as a string or a file object.
@@ -126,6 +133,11 @@ def round_value(value, decimalplaces=0):
     return rounded
 
 
+def round32(value):
+    """Rounds up to nearest multiple of 32."""
+    return int(32 * np.ceil(float(value) / 32))
+
+
 def human_size(size, a_kilobyte_is_1024_bytes=False):
     """Convert a file size to human-readable form.
 
@@ -155,31 +167,76 @@ def get_host_info():
     """Get information about the machine, CPU, RAM, and OS.
 
     Returns:
-        hostinfo (dict): Manufacturer and model of machine; description of CPU type, speed, cores; RAM; name and version of operating system.
+        hostinfo (dict): Manufacturer and model of machine; description of CPU
+                type, speed, cores; RAM; name and version of operating system.
     """
+
+    # Default to 'unknown' if any of the detection fails
+    manufacturer = model = cpuID = sockets = threadspercore = 'unknown'
 
     # Windows
     if sys.platform == 'win32':
-        manufacturer = subprocess.check_output("wmic csproduct get vendor", shell=True).decode('utf-8').strip()
-        manufacturer = manufacturer.split('\n')[1]
-        model = subprocess.check_output("wmic computersystem get model", shell=True).decode('utf-8').strip()
-        model = model.split('\n')[1]
+        # Manufacturer/model
+        try:
+            manufacturer = subprocess.check_output("wmic csproduct get vendor", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+            manufacturer = manufacturer.split('\n')[1]
+            model = subprocess.check_output("wmic computersystem get model", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+            model = model.split('\n')[1]
+        except subprocess.CalledProcessError:
+            pass
         machineID = manufacturer + ' ' + model
-        cpuID = subprocess.check_output("wmic cpu get Name", shell=True).decode('utf-8').strip()
-        cpuID = cpuID.split('\n')[1]
-        if platform.machine().endswith('64'):
-            osbit = '(64-bit)'
+
+        # CPU information
+        try:
+            allcpuinfo = subprocess.check_output("wmic cpu get Name", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+            allcpuinfo = allcpuinfo.split('\n')
+            sockets = 0
+            for line in allcpuinfo:
+                if 'CPU' in line:
+                    cpuID = line.strip()
+                    sockets += 1
+        except subprocess.CalledProcessError:
+            pass
+
+        # Hyperthreading
+        if psutil.cpu_count(logical=False) != psutil.cpu_count(logical=True):
+            hyperthreading = True
         else:
-            osbit = '(32-bit)'
+            hyperthreading = False
+
+        # OS version
+        if platform.machine().endswith('64'):
+            osbit = ' (64-bit)'
+        else:
+            osbit = ' (32-bit)'
         osversion = 'Windows ' + platform.release() + osbit
 
     # Mac OS X/macOS
     elif sys.platform == 'darwin':
+        # Manufacturer/model
         manufacturer = 'Apple'
-        model = subprocess.check_output("sysctl -n hw.model", shell=True).decode('utf-8').strip()
+        try:
+            model = subprocess.check_output("sysctl -n hw.model", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+        except subprocess.CalledProcessError:
+            pass
         machineID = manufacturer + ' ' + model
-        cpuID = subprocess.check_output("sysctl -n machdep.cpu.brand_string", shell=True).decode('utf-8').strip()
-        cpuID = ' '.join(cpuID.split())
+
+        # CPU information
+        try:
+            sockets = subprocess.check_output("sysctl -n hw.packages", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+            sockets = int(sockets)
+            cpuID = subprocess.check_output("sysctl -n machdep.cpu.brand_string", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+            cpuID = ' '.join(cpuID.split())
+        except subprocess.CalledProcessError:
+            pass
+
+        # Hyperthreading
+        if psutil.cpu_count(logical=False) != psutil.cpu_count(logical=True):
+            hyperthreading = True
+        else:
+            hyperthreading = False
+
+        # OS version
         if int(platform.mac_ver()[0].split('.')[1]) < 12:
             osversion = 'Mac OS X (' + platform.mac_ver()[0] + ')'
         else:
@@ -187,24 +244,116 @@ def get_host_info():
 
     # Linux
     elif sys.platform == 'linux':
-        manufacturer = subprocess.check_output("more /sys/class/dmi/id/sys_vendor", shell=True).decode('utf-8').strip()
-        model = subprocess.check_output("more /sys/class/dmi/id/product_name", shell=True).decode('utf-8').strip()
+        # Manufacturer/model
+        try:
+            manufacturer = subprocess.check_output("cat /sys/class/dmi/id/sys_vendor", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+            model = subprocess.check_output("cat /sys/class/dmi/id/product_name", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+        except subprocess.CalledProcessError:
+            pass
         machineID = manufacturer + ' ' + model
-        allcpuinfo = subprocess.check_output("cat /proc/cpuinfo", shell=True).decode('utf-8').strip()
-        for line in allcpuinfo.split('\n'):
-            if 'model name' in line:
-                cpuID = re.sub('.*model name.*:', '', line, 1)
-        osversion = 'Linux (' + platform.release() + ')'
 
-    machineID = machineID.strip()
-    cpuID = cpuID.strip()
-    # Get number of physical CPU cores, i.e. avoid hyperthreading with OpenMP
-    cpucores = psutil.cpu_count(logical=False)
-    ram = psutil.virtual_memory().total
+        # CPU information
+        try:
+            cpuIDinfo = subprocess.check_output("cat /proc/cpuinfo", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+            for line in cpuIDinfo.split('\n'):
+                if re.search('model name', line):
+                    cpuID = re.sub('.*model name.*:', '', line, 1).strip()
+            allcpuinfo = subprocess.check_output("lscpu", shell=True, stderr=subprocess.STDOUT).decode('utf-8').strip()
+            for line in allcpuinfo.split('\n'):
+                if 'Socket(s)' in line:
+                    sockets = int(line.strip()[-1])
+                if 'Thread(s) per core' in line:
+                    threadspercore = int(line.strip()[-1])
+        except subprocess.CalledProcessError:
+            pass
 
-    hostinfo = {'machineID': machineID, 'cpuID': cpuID, 'cpucores': cpucores, 'ram': ram, 'osversion': osversion}
+        # Hyperthreading
+        if threadspercore == 2:
+            hyperthreading = True
+        else:
+            hyperthreading = False
+
+        # OS version
+        osrelease = subprocess.check_output("cat /proc/sys/kernel/osrelease", shell=True).decode('utf-8').strip()
+        osversion = 'Linux (' + osrelease + ', ' + platform.linux_distribution()[0] + ')'
+
+    # Dictionary of host information
+    hostinfo = {}
+    hostinfo['machineID'] = machineID.strip()
+    hostinfo['sockets'] = sockets
+    hostinfo['cpuID'] = cpuID
+    hostinfo['osversion'] = osversion
+    hostinfo['hyperthreading'] = hyperthreading
+    hostinfo['logicalcores'] = psutil.cpu_count()
+    try:
+        # Get number of physical CPU cores, i.e. avoid hyperthreading with OpenMP
+        hostinfo['physicalcores'] = psutil.cpu_count(logical=False)
+    except ValueError:
+        hostinfo['physicalcores'] = hostinfo['logicalcores']
+    # Handle case where cpu_count returns None on some machines
+    if not hostinfo['physicalcores']:
+        hostinfo['physicalcores'] = hostinfo['logicalcores']
+    hostinfo['ram'] = psutil.virtual_memory().total
 
     return hostinfo
+
+
+class GPU(object):
+    """GPU information."""
+    
+    def __init__(self, deviceID):
+        """
+        Args:
+            deviceID (int): Device ID for GPU.
+        """
+        
+        self.deviceID = deviceID
+        self.name = None
+        self.pcibusID = None
+        self.constmem = None
+        self.totalmem = None
+
+    def get_gpu_info(self, drv):
+        """Set information about GPU.
+            
+        Args:
+            drv (object): PyCuda driver.
+        """
+        
+        self.name = drv.Device(self.deviceID).name()
+        self.pcibusID = drv.Device(self.deviceID).pci_bus_id()
+        self.constmem = drv.Device(self.deviceID).total_constant_memory
+        self.totalmem = drv.Device(self.deviceID).total_memory()
+
+
+def detect_gpus():
+    """Get information about Nvidia GPU(s).
+        
+    Returns:
+        gpus (list): Detected GPU(s) object(s).
+    """
+    
+    try:
+        import pycuda.driver as drv
+    except ImportError:
+        raise ImportError('To use gprMax in GPU mode the pycuda package must be installed, and you must have a NVIDIA CUDA-Enabled GPU (https://developer.nvidia.com/cuda-gpus).')
+    drv.init()
+
+    # Check if there are any CUDA-Enabled GPUs
+    if drv.Device.count() == 0:
+        raise GeneralError('No NVIDIA CUDA-Enabled GPUs detected (https://developer.nvidia.com/cuda-gpus)')
+
+    # Print information about all detected GPUs
+    gpus = []
+    gputext = []
+    for i in range(drv.Device.count()):
+        gpu = GPU(deviceID=i)
+        gpu.get_gpu_info(drv)
+        gpus.append(gpu)
+        gputext.append('{} - {}, {} RAM'.format(gpu.deviceID, gpu.name, human_size(gpu.totalmem, a_kilobyte_is_1024_bytes=True)))
+    print('GPU(s) detected: {}'.format('; '.join(gputext)))
+
+    return gpus
 
 
 def memory_usage(G):
@@ -227,6 +376,7 @@ def memory_usage(G):
     # 12 x rigidE array components + 6 x rigidH array components
     rigidarrays = (12 + 6) * G.nx * G.ny * G.nz * np.dtype(np.int8).itemsize
 
+    # PML arrays
     pmlarrays = 0
     for (k, v) in G.pmlthickness.items():
         if v > 0:
@@ -246,6 +396,11 @@ def memory_usage(G):
                 pmlarrays += ((G.nx + 1) * G.ny * v)
                 pmlarrays += (G.nx * (G.ny + 1) * v)
 
-    memestimate = int(stdoverhead + fieldarrays + solidarray + rigidarrays + pmlarrays)
+    # Any dispersive material coefficients
+    disparrays = 0
+    if Material.maxpoles != 0:
+        disparrays = 3 * Material.maxpoles * (G.nx + 1) * (G.ny + 1) * (G.nz + 1) * np.dtype(complextype).itemsize
+
+    memestimate = int(stdoverhead + fieldarrays + solidarray + rigidarrays + pmlarrays + disparrays)
 
     return memestimate
